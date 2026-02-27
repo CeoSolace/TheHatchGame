@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: thehatch-store
+    env: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+      - key: STRIPE_DONO_LINK
+        sync: true
+      - key: MONGO_URI
+        sync: true
+      - key: AUTH_SECRET
+        sync: true
+      - key: ADMIN_USER
+        sync: true
+      - key: ADMIN_PASS
+        sync: true
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: true
+      - key: CLOUDINARY_API_KEY
+        sync: true
+      - key: CLOUDINARY_API_SECRET
+        sync: true

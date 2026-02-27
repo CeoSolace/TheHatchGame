@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles */
+body {
+  @apply bg-gray-900 text-gray-100 font-sans;
+}
+
+.btn {
+  @apply px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-600;
+}
