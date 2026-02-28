@@ -6,6 +6,7 @@ import { useParams } from "next/navigation"
 
 interface PlayerState {
   id: string
+  userId?: string
   name: string
   hearts: number
   hand: string[]
@@ -16,6 +17,7 @@ interface PlayerState {
 interface RoomState {
   id: string
   hostId: string
+  hostUserId?: string
   players: Record<string, PlayerState>
   started: boolean
   currentPlayerOrder: string[]
@@ -71,25 +73,29 @@ export default function RoomPage() {
     setLog((prev) => [message, ...prev].slice(0, 120))
   }
 
-  // Create socket once
+  function getStableUserId() {
+    if (typeof window === "undefined") return ""
+    const key = "hatch_userId"
+    let id = localStorage.getItem(key)
+    if (!id) {
+      id = crypto.randomUUID()
+      localStorage.setItem(key, id)
+    }
+    return id
+  }
+
   useEffect(() => {
-    const s = io({
-      transports: ["websocket", "polling"],
-    })
+    const s = io({ transports: ["websocket", "polling"] })
     socketRef.current = s
 
-    s.on("connect", () => {
-      setMyId(s.id || "")
-    })
+    s.on("connect", () => setMyId(s.id || ""))
 
     s.on("joinedRoom", ({ player }) => {
       setJoined(true)
       addLog(`Joined as ${player?.name || "player"}`)
     })
 
-    s.on("roomUpdated", ({ room }) => {
-      setRoom(room)
-    })
+    s.on("roomUpdated", ({ room }) => setRoom(room))
 
     s.on("gameStarted", ({ room }) => {
       setRoom(room)
@@ -111,9 +117,7 @@ export default function RoomPage() {
       addLog(`${pname}: ${String(message || "")}`)
     })
 
-    s.on("error", (e) => {
-      addLog(`Error: ${e?.message || "unknown"}`)
-    })
+    s.on("error", (e) => addLog(`Error: ${e?.message || "unknown"}`))
 
     return () => {
       s.disconnect()
@@ -125,35 +129,25 @@ export default function RoomPage() {
   function joinRoom() {
     const s = socketRef.current
     if (!s) return
-    s.emit("joinRoom", { roomId, name })
+    s.emit("joinRoom", { roomId, name, userId: getStableUserId() })
   }
 
   function startGame() {
-    const s = socketRef.current
-    if (!s) return
-    s.emit("startGame", { roomId })
+    socketRef.current?.emit("startGame", { roomId })
   }
 
   function rollDice() {
-    const s = socketRef.current
-    if (!s) return
-    s.emit("rollDice", { roomId })
+    socketRef.current?.emit("rollDice", { roomId })
   }
 
   function playCard(card: string) {
-    const s = socketRef.current
-    if (!s) return
-    s.emit("playCard", { roomId, card })
+    socketRef.current?.emit("playCard", { roomId, card })
   }
 
   function sendChat(msg: string) {
-    const s = socketRef.current
-    if (!s) return
-    // NOTE: relay only; not stored
-    s.emit("chat", { roomId, message: msg })
+    socketRef.current?.emit("chat", { roomId, message: msg })
   }
 
-  // Derived values
   const me = useMemo(() => {
     if (!room || !myId) return null
     return room.players?.[myId] || null
@@ -166,7 +160,6 @@ export default function RoomPage() {
 
   const currentTurnId = room?.currentPlayerOrder?.[0] || ""
 
-  // Join UI
   if (!joined) {
     return (
       <div className="max-w-md mx-auto space-y-4">
@@ -182,7 +175,7 @@ export default function RoomPage() {
           Join
         </button>
         <p className="text-xs text-gray-500">
-          Host will see a Start Game button once everyone has joined.
+          Host gets the Start Game button automatically.
         </p>
       </div>
     )
@@ -200,12 +193,11 @@ export default function RoomPage() {
         </p>
       </div>
 
-      {/* HOST CONTROLS */}
       {!room.started && (
         <div className="border border-gray-700 rounded p-3 space-y-2">
           <h3 className="font-semibold">Lobby</h3>
           <p className="text-sm text-gray-400">
-            Waiting for host to start. Players: {Object.keys(room.players).length}
+            Players: {Object.keys(room.players).length}
           </p>
 
           {isHost ? (
@@ -223,7 +215,6 @@ export default function RoomPage() {
         </div>
       )}
 
-      {/* PLAYER GRID */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {Object.values(room.players).map((p) => (
           <div key={p.id} className="border border-gray-700 p-2 rounded">
@@ -236,7 +227,6 @@ export default function RoomPage() {
         ))}
       </div>
 
-      {/* GAMEPLAY */}
       {room.started && (
         <div className="border border-gray-700 rounded p-3 space-y-3">
           <h3 className="font-semibold">Game</h3>
@@ -265,7 +255,6 @@ export default function RoomPage() {
         </div>
       )}
 
-      {/* LOG */}
       <div className="border-t border-gray-700 pt-4 mt-4">
         <h3 className="font-semibold">Log</h3>
         <ul className="max-h-56 overflow-y-auto text-sm space-y-1">
@@ -275,7 +264,6 @@ export default function RoomPage() {
         </ul>
       </div>
 
-      {/* CHAT */}
       <div className="mt-4 space-y-2">
         <h3 className="font-semibold">Chat</h3>
         <p className="text-xs text-gray-500">Chat is relayed and not stored.</p>
