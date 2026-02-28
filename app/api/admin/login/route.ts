@@ -13,7 +13,6 @@ export async function POST(req: NextRequest) {
   const adminUser = process.env.ADMIN_USER
   const adminPass = process.env.ADMIN_PASS
 
-  // If missing → admin disabled entirely (404)
   if (!adminUser || !adminPass) {
     return new NextResponse('Admin disabled', { status: 404 })
   }
@@ -28,12 +27,8 @@ export async function POST(req: NextRequest) {
   const username = String(body?.username ?? '')
   const password = String(body?.password ?? '')
 
-  // Constant-time compare (no external deps)
   const ok = safeCompare(username, adminUser) && safeCompare(password, adminPass)
-
-  if (!ok) {
-    return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
-  }
+  if (!ok) return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
 
   const session = createSession()
   const res = NextResponse.json({ ok: true })
