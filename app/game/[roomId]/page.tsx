@@ -1,7 +1,8 @@
 "use client"
-import { useEffect, useState } from 'react'
-import { io, Socket } from 'socket.io-client'
-import { useParams, useRouter } from 'next/navigation'
+
+import { useEffect, useMemo, useRef, useState } from "react"
+import { io, Socket } from "socket.io-client"
+import { useParams } from "next/navigation"
 
 interface PlayerState {
   id: string
@@ -23,26 +24,26 @@ interface RoomState {
 }
 
 function ChatInput({ onSend }: { onSend: (msg: string) => void }) {
-  const [input, setInput] = useState('')
+  const [input, setInput] = useState("")
   return (
     <div className="flex gap-2">
       <input
         value={input}
         onChange={(e) => setInput(e.target.value)}
         className="flex-grow p-2 rounded bg-gray-800 border border-gray-700"
-        placeholder="Type a message"
+        placeholder="Type a message (not stored)"
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && input.trim()) {
-            onSend(input)
-            setInput('')
+          if (e.key === "Enter" && input.trim()) {
+            onSend(input.trim())
+            setInput("")
           }
         }}
       />
       <button
         onClick={() => {
           if (input.trim()) {
-            onSend(input)
-            setInput('')
+            onSend(input.trim())
+            setInput("")
           }
         }}
         className="btn"
@@ -55,141 +56,229 @@ function ChatInput({ onSend }: { onSend: (msg: string) => void }) {
 
 export default function RoomPage() {
   const params = useParams<{ roomId: string }>()
-  const router = useRouter()
   const roomId = params.roomId
-  const [socket, setSocket] = useState<Socket | null>(null)
-  const [room, setRoom] = useState<RoomState | null>(null)
-  const [log, setLog] = useState<string[]>([])
-  const [name, setName] = useState('')
+
+  const socketRef = useRef<Socket | null>(null)
+
+  const [myId, setMyId] = useState<string>("")
+  const [name, setName] = useState("")
   const [joined, setJoined] = useState(false)
 
+  const [room, setRoom] = useState<RoomState | null>(null)
+  const [log, setLog] = useState<string[]>([])
+
+  function addLog(message: string) {
+    setLog((prev) => [message, ...prev].slice(0, 120))
+  }
+
+  // Create socket once
   useEffect(() => {
-    if (!roomId) return
-    const s = io()
-    setSocket(s)
-    s.on('roomUpdated', ({ room }) => {
+    const s = io({
+      transports: ["websocket", "polling"],
+    })
+    socketRef.current = s
+
+    s.on("connect", () => {
+      setMyId(s.id || "")
+    })
+
+    s.on("joinedRoom", ({ player }) => {
+      setJoined(true)
+      addLog(`Joined as ${player?.name || "player"}`)
+    })
+
+    s.on("roomUpdated", ({ room }) => {
       setRoom(room)
     })
-    s.on('gameStarted', ({ room }) => {
+
+    s.on("gameStarted", ({ room }) => {
       setRoom(room)
-      addLog('Game started')
+      addLog("Game started.")
     })
-    s.on('diceRolled', ({ die, result, room }) => {
+
+    s.on("diceRolled", ({ result, room }) => {
       setRoom(room)
-      addLog(result.description)
+      if (result?.description) addLog(result.description)
     })
-    s.on('cardPlayed', ({ playerId, card, targetId }) => {
-      const pname = room?.players[playerId]?.name || playerId
+
+    s.on("cardPlayed", ({ playerId, card }) => {
+      const pname = room?.players?.[playerId]?.name || playerId?.slice?.(0, 6) || "player"
       addLog(`${pname} played ${card}`)
     })
-    s.on('chat', ({ playerId, message }) => {
-      const pname = room?.players[playerId]?.name || playerId
-      addLog(`${pname}: ${message}`)
+
+    s.on("chat", ({ playerId, message }) => {
+      const pname = room?.players?.[playerId]?.name || playerId?.slice?.(0, 6) || "player"
+      addLog(`${pname}: ${String(message || "")}`)
     })
-    // Join on mount if name set later
+
+    s.on("error", (e) => {
+      addLog(`Error: ${e?.message || "unknown"}`)
+    })
+
     return () => {
       s.disconnect()
+      socketRef.current = null
     }
-  }, [roomId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  function join() {
-    if (!socket) return
-    socket.emit('joinRoom', { roomId, name })
-    socket.on('joinedRoom', ({ roomId: r, player }) => {
-      setJoined(true)
-    })
+  function joinRoom() {
+    const s = socketRef.current
+    if (!s) return
+    s.emit("joinRoom", { roomId, name })
   }
 
   function startGame() {
-    socket?.emit('startGame', { roomId })
+    const s = socketRef.current
+    if (!s) return
+    s.emit("startGame", { roomId })
   }
 
   function rollDice() {
-    socket?.emit('rollDice', { roomId })
+    const s = socketRef.current
+    if (!s) return
+    s.emit("rollDice", { roomId })
   }
 
   function playCard(card: string) {
-    socket?.emit('playCard', { roomId, card })
+    const s = socketRef.current
+    if (!s) return
+    s.emit("playCard", { roomId, card })
   }
 
   function sendChat(msg: string) {
-    socket?.emit('chat', { roomId, message: msg })
+    const s = socketRef.current
+    if (!s) return
+    // NOTE: relay only; not stored
+    s.emit("chat", { roomId, message: msg })
   }
 
-  function addLog(message: string) {
-    setLog((prev) => [message, ...prev].slice(0, 100))
-  }
+  // Derived values
+  const me = useMemo(() => {
+    if (!room || !myId) return null
+    return room.players?.[myId] || null
+  }, [room, myId])
 
+  const isHost = useMemo(() => {
+    if (!room || !myId) return false
+    return room.hostId === myId
+  }, [room, myId])
+
+  const currentTurnId = room?.currentPlayerOrder?.[0] || ""
+
+  // Join UI
   if (!joined) {
     return (
       <div className="max-w-md mx-auto space-y-4">
-        <h1 className="text-2xl font-bold text-center">Join Room {roomId}</h1>
+        <h1 className="text-2xl font-bold text-center">Join Room</h1>
+        <p className="text-sm text-gray-400 break-all">Room: {roomId}</p>
         <input
           placeholder="Your display name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="w-full p-2 rounded bg-gray-800 border border-gray-700"
         />
-        <button onClick={join} className="btn w-full">Join</button>
+        <button onClick={joinRoom} className="btn w-full">
+          Join
+        </button>
+        <p className="text-xs text-gray-500">
+          Host will see a Start Game button once everyone has joined.
+        </p>
       </div>
     )
   }
+
   if (!room) return <p>Loading room…</p>
-  const meId = socket?.id || ''
-  const me = room.players[meId]
-  const isHost = room.hostId === meId
-  const currentTurnId = room.currentPlayerOrder[0]
+
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold">Room {room.id}</h2>
+      <div className="flex flex-col gap-1">
+        <h2 className="text-xl font-bold">Room {room.id}</h2>
+        <p className="text-sm text-gray-400">
+          You: <span className="text-gray-200">{me?.name || myId.slice(0, 6)}</span>{" "}
+          {isHost ? <span className="text-blue-400">(Host)</span> : null}
+        </p>
+      </div>
+
+      {/* HOST CONTROLS */}
+      {!room.started && (
+        <div className="border border-gray-700 rounded p-3 space-y-2">
+          <h3 className="font-semibold">Lobby</h3>
+          <p className="text-sm text-gray-400">
+            Waiting for host to start. Players: {Object.keys(room.players).length}
+          </p>
+
+          {isHost ? (
+            <button
+              className="btn"
+              onClick={startGame}
+              disabled={Object.keys(room.players).length < 2}
+              title={Object.keys(room.players).length < 2 ? "Need at least 2 players" : "Start the game"}
+            >
+              Start Game
+            </button>
+          ) : (
+            <p className="text-sm text-gray-400">Only the host can start the game.</p>
+          )}
+        </div>
+      )}
+
+      {/* PLAYER GRID */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {Object.values(room.players).map((p) => (
           <div key={p.id} className="border border-gray-700 p-2 rounded">
             <h3 className="font-semibold">{p.name}</h3>
             <p>Hearts: {p.hearts}</p>
             <p>Coward: {p.cowardTokens}</p>
-            <p>Role: {p.role}</p>
-            {p.id === currentTurnId && <p className="text-green-400">Current Turn</p>}
+            {p.id === room.hostId && <p className="text-blue-400 text-sm">Host</p>}
+            {p.id === currentTurnId && room.started && <p className="text-green-400">Current Turn</p>}
           </div>
         ))}
       </div>
-      <div className="space-y-2">
-        {room.started ? (
-          <>
-            <div className="space-y-2">
-              <p>Your hand:</p>
-              <div className="flex gap-2 flex-wrap">
-                {me?.hand.map((card) => (
-                  <button key={card} onClick={() => playCard(card)} className="btn text-xs">
-                    Play {card}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {currentTurnId === meId && (
-              <div className="flex gap-4 mt-4">
-                <button onClick={() => socket?.emit('rollDice', { roomId })} className="btn">
-                  Roll Dice
+
+      {/* GAMEPLAY */}
+      {room.started && (
+        <div className="border border-gray-700 rounded p-3 space-y-3">
+          <h3 className="font-semibold">Game</h3>
+          <p className="text-sm text-gray-400">Pressure: {room.pressure}</p>
+
+          <div className="space-y-2">
+            <p className="text-sm">Your hand:</p>
+            <div className="flex gap-2 flex-wrap">
+              {(me?.hand || []).map((card) => (
+                <button key={card} onClick={() => playCard(card)} className="btn text-xs">
+                  Play {card}
                 </button>
-              </div>
-            )}
-          </>
-        ) : (
-          isHost && (
-            <button onClick={startGame} className="btn">Start Game</button>
-          )
-        )}
-      </div>
+              ))}
+            </div>
+          </div>
+
+          {currentTurnId === myId ? (
+            <div className="flex gap-3">
+              <button onClick={rollDice} className="btn">
+                Roll Dice
+              </button>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">Waiting for current player…</p>
+          )}
+        </div>
+      )}
+
+      {/* LOG */}
       <div className="border-t border-gray-700 pt-4 mt-4">
         <h3 className="font-semibold">Log</h3>
-        <ul className="max-h-48 overflow-y-auto text-sm space-y-1">
+        <ul className="max-h-56 overflow-y-auto text-sm space-y-1">
           {log.map((entry, idx) => (
             <li key={idx}>{entry}</li>
           ))}
         </ul>
       </div>
+
+      {/* CHAT */}
       <div className="mt-4 space-y-2">
         <h3 className="font-semibold">Chat</h3>
+        <p className="text-xs text-gray-500">Chat is relayed and not stored.</p>
         <ChatInput onSend={sendChat} />
       </div>
     </div>
