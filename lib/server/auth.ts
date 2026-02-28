@@ -4,15 +4,19 @@ import type { NextRequest } from "next/server"
 
 const COOKIE = "hatch_session"
 
+function getSecret() {
+  return process.env.AUTH_SECRET || ""
+}
+
 export function signSession(payload: { userId: string }) {
-  const secret = process.env.AUTH_SECRET
-  if (!secret) throw new Error("AUTH_SECRET missing")
+  const secret = getSecret()
+  if (!secret) return null
   return jwt.sign(payload, secret, { expiresIn: "30d" })
 }
 
 export function verifySession(token?: string) {
   if (!token) return null
-  const secret = process.env.AUTH_SECRET
+  const secret = getSecret()
   if (!secret) return null
   try {
     return jwt.verify(token, secret) as { userId: string; iat: number; exp: number }
@@ -32,11 +36,10 @@ export function sessionCookieOptions() {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
     path: "/",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: 60 * 60 * 24 * 30
   }
 }
 
-// privacy-safe: store only a hash of IP, not raw
 export function hashIp(ip: string) {
   return crypto.createHash("sha256").update(ip).digest("hex")
 }
