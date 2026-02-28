@@ -1,13 +1,13 @@
 import { cookies } from 'next/headers'
 
 async function fetchReports() {
-  const res = await fetch('http://localhost:3000/api/reports', { cache: 'no-store' })
+  const res = await fetch('http://thehatch.store/api/reports', { cache: 'no-store' })
   if (!res.ok) return []
   return res.json()
 }
 
 async function fetchTeamApps() {
-  const res = await fetch('http://localhost:3000/api/teams/apply', { cache: 'no-store' })
+  const res = await fetch('http://thehatch.store/api/teams/apply', { cache: 'no-store' })
   return []
 }
 
