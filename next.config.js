@@ -1,13 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
   images: {
-    domains: ['res.cloudinary.com'],
+    remotePatterns: [
+      // Cloudinary (if used)
+      {
+        protocol: "https",
+        hostname: "res.cloudinary.com",
+        pathname: "/**",
+      },
+    ],
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  output: 'standalone',
 }
 
 module.exports = nextConfig
