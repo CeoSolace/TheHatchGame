@@ -1,43 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-interface Report {
-  id: string
-  reportedUserId: string
-  category: string
-  text: string
-  roomId: string
-  events: any[]
-  createdAt: number
-  reviewed: boolean
-}
-
-export const reports: Report[] = []
+import { addReport, listReports, type Report } from '@/lib/server/reportStore'
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const { reportedUserId, category, text, roomId, events } = body
+
     if (!reportedUserId || !category || !roomId) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
     }
+
     const report: Report = {
       id: String(Date.now()),
-      reportedUserId,
-      category,
-      text: (text || '').slice(0, 500),
-      roomId,
+      reportedUserId: String(reportedUserId),
+      category: String(category),
+      text: String(text || '').slice(0, 500),
+      roomId: String(roomId),
       events: Array.isArray(events) ? events.slice(-50) : [],
       createdAt: Date.now(),
       reviewed: false,
     }
-    reports.push(report)
+
+    // NOTE: If MongoDB is configured later, this is where you’d write to Mongo.
+    // For now (and when MONGO_URI is missing) we store in-memory.
+    addReport(report)
+
     return NextResponse.json({ ok: true })
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
 }
 
-export async function GET(req: NextRequest) {
-  // Only admin should access; simple check using query token or cookie is omitted in this sample
-  return NextResponse.json(reports)
+export async function GET() {
+  // Public GET isn't ideal for production, but keeping it as-is for now since admin UI uses it.
+  // If you want: lock this behind admin session check.
+  return NextResponse.json(listReports())
 }
