@@ -14,7 +14,6 @@ declare global {
   var __HATCH_REPORTS__: Report[] | undefined
 }
 
-// Persist across hot reloads / Next dev workers
 const store = globalThis.__HATCH_REPORTS__ ?? []
 globalThis.__HATCH_REPORTS__ = store
 
