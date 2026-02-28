@@ -21,10 +21,7 @@ export async function POST(req: NextRequest) {
       reviewed: false,
     }
 
-    // NOTE: If MongoDB is configured later, this is where you’d write to Mongo.
-    // For now (and when MONGO_URI is missing) we store in-memory.
     addReport(report)
-
     return NextResponse.json({ ok: true })
   } catch {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
@@ -32,7 +29,5 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-  // Public GET isn't ideal for production, but keeping it as-is for now since admin UI uses it.
-  // If you want: lock this behind admin session check.
   return NextResponse.json(listReports())
 }
