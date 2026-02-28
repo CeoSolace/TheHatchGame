@@ -18,7 +18,14 @@ export async function POST(req: NextRequest) {
   const me = await User.findById(session.userId)
   if (!me) return NextResponse.json({ error: "User not found" }, { status: 404 })
 
-  await Friendship.deleteOne({ fromUserId: me._id, toUserId: otherId })
+  // Set block record me -> other
+  await Friendship.updateOne(
+    { fromUserId: me._id, toUserId: otherId },
+    { $set: { fromUserId: me._id, toUserId: otherId, status: "blocked", updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
+    { upsert: true }
+  )
+
+  // Remove reverse relationships to avoid “accepted” remaining
   await Friendship.deleteOne({ fromUserId: otherId, toUserId: me._id })
 
   return NextResponse.json({ ok: true })
