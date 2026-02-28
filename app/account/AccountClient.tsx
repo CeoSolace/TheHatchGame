@@ -65,7 +65,9 @@ export default function AccountClient() {
       }
 
       await loadMe()
-      router.push(next)
+
+      // Use full navigation to ensure middleware sees fresh cookie
+      window.location.href = next
     } catch {
       setError("Network error")
     } finally {
@@ -78,6 +80,7 @@ export default function AccountClient() {
     try {
       await fetch("/api/auth/logout", { method: "POST" })
       setMe(null)
+      window.location.href = "/account"
     } finally {
       setBusy(false)
     }
@@ -101,9 +104,15 @@ export default function AccountClient() {
             Logout
           </button>
 
-          <button onClick={() => router.push("/game")} className="btn w-full" disabled={busy}>
+          {/* Go Play: plain link = always works */}
+          <a href="/game" className="btn w-full block text-center">
             Go Play
-          </button>
+          </a>
+
+          {/* Offline play always available */}
+          <a href="/game/offline" className="btn bg-gray-700 hover:bg-gray-600 w-full block text-center">
+            Play Offline
+          </a>
         </div>
       ) : (
         <div className="border border-gray-700 rounded p-4 space-y-3">
@@ -159,6 +168,10 @@ export default function AccountClient() {
           <p className="text-xs text-gray-500">
             Online play requires an account. Offline Hotseat/Troll works without login.
           </p>
+
+          <a href="/game/offline" className="btn bg-gray-700 hover:bg-gray-600 w-full block text-center">
+            Play Offline
+          </a>
         </div>
       )}
     </div>
