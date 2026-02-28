@@ -1,30 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server'
-import secureCompare from 'secure-compare'
-import { createSession, getSession, clearSession } from '@/lib/server/adminSession'
+import crypto from 'crypto'
+import { createSession, clearSession } from '@/lib/server/adminSession'
+
+function safeCompare(a: string, b: string) {
+  const aBuf = Buffer.from(a)
+  const bBuf = Buffer.from(b)
+  if (aBuf.length !== bBuf.length) return false
+  return crypto.timingSafeEqual(aBuf, bBuf)
+}
 
 export async function POST(req: NextRequest) {
   const adminUser = process.env.ADMIN_USER
   const adminPass = process.env.ADMIN_PASS
+
+  // If missing → admin disabled entirely (404)
   if (!adminUser || !adminPass) {
     return new NextResponse('Admin disabled', { status: 404 })
   }
-  const { username, password } = await req.json()
-  if (
-    secureCompare(username || '', adminUser) &&
-    secureCompare(password || '', adminPass)
-  ) {
-    const session = createSession()
-    const res = NextResponse.json({ ok: true })
-    res.cookies.set('admin_session', session.token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 8 * 60 * 60,
-      path: '/',
-    })
-    return res
+
+  let body: any
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
-  return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+
+  const username = String(body?.username ?? '')
+  const password = String(body?.password ?? '')
+
+  // Constant-time compare (no external deps)
+  const ok = safeCompare(username, adminUser) && safeCompare(password, adminPass)
+
+  if (!ok) {
+    return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+  }
+
+  const session = createSession()
+  const res = NextResponse.json({ ok: true })
+  res.cookies.set('admin_session', session.token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 8 * 60 * 60,
+    path: '/',
+  })
+  return res
 }
 
 export async function DELETE(req: NextRequest) {
