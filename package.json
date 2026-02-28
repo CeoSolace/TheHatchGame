@@ -2,11 +2,13 @@
   "name": "thehatch.store",
   "version": "1.0.0",
   "private": true,
+  "description": "THE HATCH - Multiplayer Web Game + Storefront",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "node server.js",
-    "lint": "next lint"
+    "start": "NODE_ENV=production node server.js",
+    "lint": "next lint",
+    "format": "prettier --write ."
   },
   "engines": {
     "node": "20.x"
