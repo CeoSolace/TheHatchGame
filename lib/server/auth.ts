@@ -30,13 +30,20 @@ export function getSessionFromReq(req: NextRequest) {
   return verifySession(token)
 }
 
-export function sessionCookieOptions() {
+// Decide secure cookie based on request headers (works on Render + localhost)
+export function sessionCookieOptions(req?: NextRequest) {
+  const proto =
+    req?.headers.get("x-forwarded-proto") ||
+    (typeof window === "undefined" ? "" : window.location.protocol.replace(":", ""))
+
+  const isHttps = proto === "https"
+
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: isHttps, // ✅ key fix
     sameSite: "lax" as const,
     path: "/",
-    maxAge: 60 * 60 * 24 * 30
+    maxAge: 60 * 60 * 24 * 30,
   }
 }
 
