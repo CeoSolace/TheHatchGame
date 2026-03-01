@@ -1,13 +1,15 @@
-// app/game/page.tsx
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
 import FundingBanner from "./components/FundingBanner"
 import { PlayerCard } from "./components/PlayerCard"
 import { PressureMeter } from "./components/PressureMeter"
 import { DiceVisual } from "./components/DiceVisual"
 import { Icon } from "./components/Icon"
+
+import WebGLGate from "./components3d/WebGLGate"
+import GameScene3D from "./components3d/GameScene3D"
 
 type Me = {
   userId: string
@@ -32,6 +34,7 @@ function HatchBackdrop() {
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       <div className="absolute -top-40 -left-40 h-[520px] w-[520px] rounded-full bg-white/5 blur-3xl" />
       <div className="absolute -bottom-48 -right-48 h-[620px] w-[620px] rounded-full bg-white/5 blur-3xl" />
+
       <svg
         className="absolute left-1/2 top-24 -translate-x-1/2 opacity-[0.06]"
         width="520"
@@ -104,29 +107,11 @@ export default function GameLobbyPage() {
 
   const [me, setMe] = useState<Me>(null)
   const [loadingMe, setLoadingMe] = useState(true)
-
   const [offline, setOffline] = useState(false)
 
-  // “Code-generated visuals” demo state (so the page looks like a game even before sockets/art)
+  // Cosmetic demo values (until socket state is wired in)
   const [pressure, setPressure] = useState(0)
   const [lastRoll, setLastRoll] = useState(5)
-
-  const seats: Seat[] = useMemo(() => {
-    const base: Seat[] = [
-      {
-        userId: me?.userId || "guest",
-        displayName: me?.displayName || "You",
-        hearts: 3,
-        cowardTokens: 0,
-        isHost: true,
-        isTurn: true,
-      },
-      { userId: "seat-2", displayName: "Player 2", hearts: 3, cowardTokens: 1 },
-      { userId: "seat-3", displayName: "Player 3", hearts: 2, cowardTokens: 2 },
-      { userId: "seat-4", displayName: "Player 4", hearts: 4, cowardTokens: 0 },
-    ]
-    return base
-  }, [me?.displayName, me?.userId])
 
   useEffect(() => {
     const update = () => setOffline(typeof navigator !== "undefined" ? !navigator.onLine : false)
@@ -160,26 +145,39 @@ export default function GameLobbyPage() {
     }
   }, [])
 
-  // Gentle “alive UI” motion: simulate pressure + a last roll (purely cosmetic on this lobby screen)
+  // UI-only motion so the lobby feels alive
   useEffect(() => {
     const t = window.setInterval(() => {
-      setLastRoll((v) => {
-        const next = v >= 6 ? 1 : v + 1
-        return next
-      })
+      setLastRoll((v) => (v >= 6 ? 1 : v + 1))
       setPressure((p) => (p >= 10 ? 0 : p + 1))
     }, 2200)
     return () => window.clearInterval(t)
   }, [])
 
-  const mongoEnabled = !!process.env.NEXT_PUBLIC_MONGO_ENABLED // optional if you set it; otherwise we infer from behavior
+  const seats: Seat[] = useMemo(() => {
+    return [
+      {
+        userId: me?.userId || "guest",
+        displayName: me?.displayName || "You",
+        hearts: 3,
+        cowardTokens: 0,
+        isHost: true,
+        isTurn: true,
+      },
+      { userId: "seat-2", displayName: "Player 2", hearts: 3, cowardTokens: 1 },
+      { userId: "seat-3", displayName: "Player 3", hearts: 2, cowardTokens: 2 },
+      { userId: "seat-4", displayName: "Player 4", hearts: 4, cowardTokens: 0 },
+    ]
+  }, [me?.displayName, me?.userId])
+
+  const turnIndex = Math.max(0, seats.findIndex((s) => s.isTurn))
 
   return (
     <div className="relative">
       <HatchBackdrop />
 
       <div className="relative space-y-6">
-        {/* Pre-game funding banner */}
+        {/* Funding message */}
         <FundingBanner donateLink={!offline ? donateLink : undefined} />
 
         {/* Header strip */}
@@ -196,16 +194,14 @@ export default function GameLobbyPage() {
                 )}
               </div>
               <p className="text-sm text-white/60 mt-1">
-                This lobby uses <span className="text-white/80">code-generated visuals</span> until we fund a full art pass.
+                Visuals are <span className="text-white/80">code-generated placeholders</span> until we fund a full custom art pass.
               </p>
             </div>
 
             <div className="flex items-center gap-3">
               <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
                 <div className="text-xs text-white/50">Signed in</div>
-                <div className="text-sm font-semibold">
-                  {loadingMe ? "…" : me ? me.displayName : "Offline Guest"}
-                </div>
+                <div className="text-sm font-semibold">{loadingMe ? "…" : me ? me.displayName : "Guest"}</div>
               </div>
 
               {!me && !offline && (
@@ -220,14 +216,34 @@ export default function GameLobbyPage() {
           </div>
         </div>
 
-        {/* “Game look” preview panel */}
+        {/* Layout */}
         <div className="grid gap-4 lg:grid-cols-3">
+          {/* Main “game-feeling” panel */}
           <div className="lg:col-span-2 space-y-3">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold text-white/80">Table Preview</div>
-              <div className="text-xs text-white/50">Visual prototype</div>
+              <div className="text-xs text-white/50">Procedural 3D + UI</div>
             </div>
 
+            {/* 3D layer */}
+            <WebGLGate>
+              <GameScene3D
+                players={seats.map((s) => ({
+                  userId: s.userId,
+                  displayName: s.displayName,
+                  hearts: s.hearts,
+                  cowardTokens: s.cowardTokens,
+                  isHost: s.isHost,
+                }))}
+                turnIndex={turnIndex}
+                lastRoll={lastRoll}
+              />
+              <div className="mt-2 text-xs text-white/45">
+                3D visuals are procedural placeholders until the art fund covers real models + textures.
+              </div>
+            </WebGLGate>
+
+            {/* UI layer */}
             <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/5 to-white/0 p-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <PressureMeter pressure={pressure} />
@@ -252,12 +268,12 @@ export default function GameLobbyPage() {
               </div>
 
               <div className="mt-4 text-xs text-white/45">
-                Note: this preview is UI-only. Actual match visuals will be upgraded after art funding.
+                This lobby preview is UI-only. Online matches will render real state + animations as funding expands.
               </div>
             </div>
           </div>
 
-          {/* Mode selection */}
+          {/* Modes */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold text-white/80">Modes</div>
@@ -289,18 +305,6 @@ export default function GameLobbyPage() {
                 disabled={offline || !me}
                 badge={offline ? "Offline" : !me ? "Sign in" : "Online"}
               />
-
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div className="text-sm font-semibold">About the visuals</div>
-                <p className="text-sm text-white/65 mt-1">
-                  Current UI uses SVG/gradients and code-rendered components. We’re funding a full art pass (custom UI, animations,
-                  assets).
-                </p>
-                <div className="mt-3 flex items-center gap-2 text-xs text-white/55">
-                  <Icon name="hatch" className="w-4 h-4" />
-                  <span>“Help fund actual graphics” banner is above.</span>
-                </div>
-              </div>
 
               <Link
                 href="/versions"
